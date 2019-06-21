@@ -61,6 +61,26 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
    *  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
    *  http://www.cplusplus.com/reference/random/default_random_engine/
    */
+    
+    normal_distribution<double> dist_x(0, std_pos[0]);
+    normal_distribution<double> dist_y(0, std_pos[1]);
+    normal_distribution<double> dist_theta(0, std_pos[2]);
+    
+    for(int i = 0; i < num_particles; i++) {
+        if(fabs(yaw_rate) < 0.00001) {
+            particles[i].x += velocity * delta_t * cos(particles[i].theta);
+            particles[i].y += velocity * delta_t * sin(particles[i].theta);
+        }
+        else{
+            particles[i].x += velocity / yaw_rate * (sin(particles[i].theta + yaw_rate*delta_t) - sin(particles[i].theta));
+            particles[i].y += velocity / yaw_rate * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate*delta_t));
+            particles[i].theta += yaw_rate * delta_t;
+        }
+        
+        particles[i].x += dist_x(gen);
+        particles[i].y += dist_y(gen);
+        particles[i].theta += dist_theta(gen);
+    }
 
 }
 
@@ -74,6 +94,19 @@ void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted,
    *   probably find it useful to implement this method and use it as a helper 
    *   during the updateWeights phase.
    */
+    
+    for(auto &o : observations) {
+        double min_dist = INT_MAX;
+        int min_idx = -1;
+        for(auto &p : predicted) {
+            double curr_dist = dist(p.x, p.y, o.x, o.y);
+            if(curr_dist < min_dist) {
+                min_dist = curr_dist;
+                min_idx = p.id;
+            }
+        }
+        o.id = min_idx;
+    }
 
 }
 
@@ -93,6 +126,51 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    *   and the following is a good resource for the actual equation to implement
    *   (look at equation 3.33) http://planning.cs.uiuc.edu/node99.html
    */
+    for(auto& p : particles) {
+        
+        vector<LandmarkObs> landmarks_in_range;
+        for(auto lm : map_landmarks.landmark_list) {
+            if(dist(lm.x_f, lm.y_f, p.x, p.y) <= sensor_range) {
+                landmark_in_range.push_back(LandmarkObs{ lm.id_i, lm.x_f, lm.y_f });
+            }
+        }
+        
+        vector<LandmarkObs> trans_obs;
+        for(auto o : observations) {
+            std::pair<double, double> map_obs = transform_obs(p.x, p.y, p.theta, o.x, o.y);
+            trans_obs.push_back(LandmarkObs{o.id, map_obs.first, map_obs.second});
+        }
+        
+        dataAssociation(landmarks_in_range, trans_obs);
+        
+        vector<int> associations;
+        vector<double> sense_x;
+        vector<double> sense_y;
+        
+        double wei;
+        p.weight = 1.0;
+        for(auto ob: trans_obs) {
+            double l_x=0.0, l_y = 0.0;
+            int asso_prediction = ob.id;
+            
+            for(auto& lm : landmarks_in_range) {
+                if(lm.id == asso_prediction) {
+                    l_x = lm.x;
+                    l_y = lm.y;
+                }
+            }
+            wei = multi_var_gauss(ob.x, ob.y, l_x, l_y, std_landmark[0], std_landmark[1]);
+            if (wei == 0) {
+                p.weight *= 0.00001;
+            }else {
+                p.weight *= wei;
+            }
+            associations.push_back(asso_prediction);
+            sense_x.push_back(ob.x);
+            sense_y.push_back(ob.y);
+        }
+        SetAssociations(p, associations, sense_x, sense_y);
+    }
 
 }
 
@@ -103,6 +181,21 @@ void ParticleFilter::resample() {
    * NOTE: You may find std::discrete_distribution helpful here.
    *   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
    */
+    weights.clear();
+    for(int i=0; i<num_particles; ++i){
+        weights.push_back(particles[i].weight);
+    }
+    
+    std::discrete_distribution<int> particle_dist(weights.begin(),weights.end());
+    
+    // Resample particles
+    vector<Particle> new_particles;
+    new_particles.resize(num_particles);
+    for(int i=0; i<num_particles; ++i){
+        auto index = particle_dist(gen);
+        new_particles[i] = std::move(particles[index]);
+    }
+    particles = std::move(new_particles);
 
 }
 
