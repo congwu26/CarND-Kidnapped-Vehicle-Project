@@ -147,7 +147,6 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
         vector<double> sense_x;
         vector<double> sense_y;
         
-        double wei;
         p.weight = 1.0;
         for(auto ob: trans_obs) {
             double l_x=0.0, l_y = 0.0;
@@ -159,8 +158,18 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
                     l_y = lm.y;
                 }
             }
-            wei = multi_var_gauss(ob.x, ob.y, l_x, l_y, std_landmark[0], std_landmark[1]);
-            if (wei == 0) {
+            // calculate normalization term
+            double gauss_norm;
+            gauss_norm = 1 / (2 * M_PI * std_landmark[0] * std_landmark[1]);
+            // calculate exponent
+            double exponent;
+            exponent = (pow(ob.x - l_x, 2) / (2 * pow(std_landmark[0], 2)))
+            + (pow(ob.y - l_y, 2) / (2 * pow(std_landmark[1], 2)));
+            // calculate weight using normalization terms and exponent
+            double weight;
+            weight = gauss_norm * exp(-exponent);
+
+            if (weight == 0) {
                 p.weight *= 0.00001;
             }else {
                 p.weight *= wei;
