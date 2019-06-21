@@ -20,6 +20,7 @@
 
 using std::string;
 using std::vector;
+using std::normal_distribution;
 
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
   /**
@@ -96,7 +97,7 @@ void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted,
    */
     
     for(auto &o : observations) {
-        double min_dist = INT_MAX;
+        double min_dist = INT8_MAX;
         int min_idx = -1;
         for(auto &p : predicted) {
             double curr_dist = dist(p.x, p.y, o.x, o.y);
@@ -131,14 +132,18 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
         vector<LandmarkObs> landmarks_in_range;
         for(auto lm : map_landmarks.landmark_list) {
             if(dist(lm.x_f, lm.y_f, p.x, p.y) <= sensor_range) {
-                landmark_in_range.push_back(LandmarkObs{ lm.id_i, lm.x_f, lm.y_f });
+                landmarks_in_range.push_back(LandmarkObs{ lm.id_i, lm.x_f, lm.y_f });
             }
         }
         
         vector<LandmarkObs> trans_obs;
         for(auto o : observations) {
-            std::pair<double, double> map_obs = transform_obs(p.x, p.y, p.theta, o.x, o.y);
-            trans_obs.push_back(LandmarkObs{o.id, map_obs.first, map_obs.second});
+            // transform to map coordinate
+            double x_map, y_map;
+            x_map = p.x + (cos(p.theta) * o.x) - (sin(p.theta) * o.y);
+            y_map = p.y + (sin(p.theta) * o.x) + (cos(p.theta) * o.y);
+            
+            trans_obs.push_back(LandmarkObs{o.id, x_map, y_map});
         }
         
         dataAssociation(landmarks_in_range, trans_obs);
@@ -172,7 +177,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
             if (weight == 0) {
                 p.weight *= 0.00001;
             }else {
-                p.weight *= wei;
+                p.weight *= weight;
             }
             associations.push_back(asso_prediction);
             sense_x.push_back(ob.x);
